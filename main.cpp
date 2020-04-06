@@ -21,7 +21,6 @@
 #include "wallpaperengine/irrlicht.h"
 #include "wallpaperengine/irr/CImageLoaderTEX.h"
 
-GtkWidget *viewport1;
 
 bool IsRootWindow = false;
 std::vector<std::string> Screens;
@@ -30,6 +29,11 @@ std::vector<irr::core::rect<irr::s32>> Viewports;
 irr::SIrrlichtCreationParameters _irr_params;
 
 irr::f32 g_Time = 0;
+
+void *Thread(void* arg) {
+    gtk_main();
+}
+
 
 void initialize_viewports ()
 {
@@ -88,25 +92,58 @@ void initialize_viewports ()
 
     XRRFreeScreenResources (screenResources);
 
+    irr::core::rect<irr::s32> v = Viewports[0];
 
-    _irr_params.WindowId = reinterpret_cast<void*> (GDK_WINDOW_XWINDOW(viewport1->window));
+    GtkWidget *window = gtk_window_new(GTK_WINDOW_TOPLEVEL);
+    gtk_window_set_keep_below(GTK_WINDOW(window), true);
+    gtk_window_set_decorated(GTK_WINDOW(window), false);
+    gtk_widget_set_app_paintable(window, false);
+    gtk_widget_set_size_request(window, v.getWidth(), v.getHeight());
+    gtk_widget_set_can_focus(window, false);
+    //gtk_window_set_opacity(GTK_WINDOW(window), 0.8);
+    gtk_window_set_resizable(GTK_WINDOW(window), false);
+    gtk_window_set_type_hint(GTK_WINDOW(window), GDK_WINDOW_TYPE_HINT_DESKTOP);
+    gtk_window_set_skip_taskbar_hint(GTK_WINDOW(window), true);
+    gtk_window_set_skip_pager_hint(GTK_WINDOW(window), true);
+    gtk_window_stick(GTK_WINDOW(window));
+    gtk_window_move(GTK_WINDOW(window), v.UpperLeftCorner.X, v.UpperLeftCorner.Y);
+
+    GtkWidget *fix = gtk_fixed_new();
+    gtk_container_add(GTK_CONTAINER(window), fix);
+
+    GdkGLConfig *glconfig = gdk_gl_config_new_by_mode(static_cast<GdkGLConfigMode>(GDK_GL_MODE_RGB | GDK_GL_MODE_DEPTH | GDK_GL_MODE_DOUBLE));
+
+    GtkWidget *viewport = gtk_drawing_area_new();
+    gtk_widget_set_gl_capability (viewport, glconfig, NULL, TRUE, GDK_GL_RGBA_TYPE);
+    gtk_widget_set_size_request(viewport, v.getWidth(), v.getHeight());
+    gtk_fixed_put(GTK_FIXED(fix), viewport, 0, 0);
+
+    gtk_widget_show_all(window);
+    // Make window click through
+    gdk_window_input_shape_combine_region(window->window, gdk_region_new(), 0, 0);
+
+    pthread_t thread;
+    pthread_create(&thread,NULL,Thread,NULL);
+
+
+    _irr_params.WindowId = reinterpret_cast<void*> (GDK_WINDOW_XWINDOW(viewport->window));
 }
 
 int init_irrlicht()
 {
     // prepare basic configuration for irrlicht
     //_irr_params.AntiAlias = 8;
-    //_irr_params.Bits = 16;
-    _irr_params.DeviceType = irr::EIDT_X11;
+    _irr_params.Bits = 16;
+    //_irr_params.DeviceType = irr::EIDT_X11;
     _irr_params.DriverType = irr::video::EDT_OPENGL;
-    _irr_params.Doublebuffer = true;
-    //_irr_params.EventReceiver = nullptr;
-    //_irr_params.Fullscreen = false;
-    //_irr_params.HandleSRGB = false;
-    //_irr_params.IgnoreInput = true;
+    //_irr_params.Doublebuffer = true;
+    _irr_params.EventReceiver = nullptr;
+    _irr_params.Fullscreen = false;
+    _irr_params.HandleSRGB = false;
+    _irr_params.IgnoreInput = true;
     //_irr_params.Stencilbuffer = true;
-    //_irr_params.UsePerformanceTimer = false;
-    //_irr_params.Vsync = false;
+    _irr_params.UsePerformanceTimer = false;
+    _irr_params.Vsync = true;
     _irr_params.WithAlphaChannel = false;
     _irr_params.ZBufferBits = 24;
     _irr_params.LoggingLevel = irr::ELL_DEBUG;
@@ -120,7 +157,7 @@ int init_irrlicht()
         return 1;
     }
 
-    //wp::irrlicht::device->setWindowCaption (L"Test game");
+    wp::irrlicht::device->setWindowCaption (L"Test game");
     wp::irrlicht::driver = wp::irrlicht::device->getVideoDriver();
 
     // check for ps and vs support
@@ -176,8 +213,33 @@ std::string stringPathFixes(const std::string& s){
     return std::move(str);
 }
 
-void *Thread(void* arg) {
-    gtk_main();
+static Window __ToonGetNautilusDesktop(Display *display, int screen, Window window,
+                         int depth)
+{
+    Window rootReturn, parentReturn, *children;
+    Window winreturn = window;
+    unsigned int nChildren;
+
+    if (depth > 5) {
+        return ((Window) 0);
+    }
+    else if (XQueryTree(display, window, &rootReturn, &parentReturn,
+                        &children, &nChildren)) {
+        unsigned int i;
+        for (i = 0; i < nChildren; ++i) {
+            XWindowAttributes attributes;
+            if (XGetWindowAttributes(display, children[i], &attributes)) {
+                if (attributes.width == DisplayWidth(display, screen)
+                    && attributes.height == DisplayHeight(display, screen)) {
+                    /* Found a possible desktop window */
+                    winreturn = __ToonGetNautilusDesktop(display, screen,
+                                                         children[i], depth+1);
+                }
+            }
+        }
+        XFree((char *) children);
+    }
+    return winreturn;
 }
 
 int main (int argc, char* argv[])
@@ -240,45 +302,8 @@ int main (int argc, char* argv[])
         }
     }
 
-
     gtk_init(&argc, &argv);
     gtk_gl_init(&argc, &argv);
-
-    GtkWidget *window = gtk_window_new(GTK_WINDOW_TOPLEVEL);
-    gtk_window_set_keep_below(GTK_WINDOW(window), true);
-    gtk_window_set_decorated(GTK_WINDOW(window), false);
-    gtk_widget_set_app_paintable(window, true);
-    gtk_widget_set_size_request(window, 1920, 1080);
-    gtk_widget_set_can_focus(window, false);
-    gtk_window_set_opacity(GTK_WINDOW(window), 0.8);
-    gtk_window_set_resizable(GTK_WINDOW(window), false);
-    gtk_window_set_type_hint(GTK_WINDOW(window), GDK_WINDOW_TYPE_HINT_DOCK);
-    gtk_window_set_skip_taskbar_hint(GTK_WINDOW(window), true);
-    gtk_window_stick(GTK_WINDOW(window));
-
-    gtk_window_move(GTK_WINDOW(window), 0, 0);
-    
-    GtkWidget *fix = gtk_fixed_new();
-    gtk_container_add(GTK_CONTAINER(window), fix);
-
-    GdkGLConfig *glconfig = gdk_gl_config_new_by_mode(static_cast<GdkGLConfigMode>(GDK_GL_MODE_RGB | GDK_GL_MODE_DEPTH | GDK_GL_MODE_DOUBLE));
-
-    viewport1 = gtk_drawing_area_new();
-    gtk_widget_set_gl_capability (viewport1, glconfig, NULL, TRUE, GDK_GL_RGBA_TYPE);
-    gtk_widget_set_size_request(viewport1, 1920, 1080);
-    gtk_fixed_put(GTK_FIXED(fix), viewport1, 0, 0);
-
-    gtk_widget_show_all(window);
-    gdk_window_input_shape_combine_region(window->window, gdk_region_new(), 0, 0);
-
-    g_signal_connect(window, "destroy",G_CALLBACK(gtk_main_quit), NULL);
-
-    pthread_t tidMov;
-    int rc = pthread_create(&tidMov,NULL,Thread,NULL);
-    if (rc != 0) {
-        fprintf(stderr,"Thread konnte nicht gestartet werden!");
-    }
-
 
     if (init_irrlicht())
     {
