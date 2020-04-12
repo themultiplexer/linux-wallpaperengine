@@ -8,10 +8,6 @@
 #include <SDL_mixer.h>
 #include <SDL.h>
 
-#include <gtk/gtk.h>
-#include <gtk/gtkgl.h>
-#include <gdk/gdkx.h>
-
 // support for randr extended screens
 #include <X11/Xlib.h>
 #include <X11/extensions/Xrandr.h>
@@ -30,9 +26,7 @@ irr::SIrrlichtCreationParameters _irr_params;
 
 irr::f32 g_Time = 0;
 
-void *Thread(void* arg) {
-    gtk_main();
-}
+Window w;
 
 
 void initialize_viewports ()
@@ -90,51 +84,18 @@ void initialize_viewports ()
         XRRFreeOutputInfo (info);
     }
 
-    XRRFreeScreenResources (screenResources);
-
-    irr::core::rect<irr::s32> v = Viewports[0];
-
-    GtkWidget *window = gtk_window_new(GTK_WINDOW_TOPLEVEL);
-    gtk_window_set_keep_below(GTK_WINDOW(window), true);
-    gtk_window_set_decorated(GTK_WINDOW(window), false);
-    gtk_widget_set_app_paintable(window, false);
-    gtk_widget_set_size_request(window, v.getWidth(), v.getHeight());
-    gtk_widget_set_can_focus(window, false);
-    //gtk_window_set_opacity(GTK_WINDOW(window), 0.8);
-    gtk_window_set_resizable(GTK_WINDOW(window), false);
-    gtk_window_set_type_hint(GTK_WINDOW(window), GDK_WINDOW_TYPE_HINT_DESKTOP);
-    gtk_window_set_skip_taskbar_hint(GTK_WINDOW(window), true);
-    gtk_window_set_skip_pager_hint(GTK_WINDOW(window), true);
-    gtk_window_stick(GTK_WINDOW(window));
-    gtk_window_move(GTK_WINDOW(window), v.UpperLeftCorner.X, v.UpperLeftCorner.Y);
-
-    GtkWidget *fix = gtk_fixed_new();
-    gtk_container_add(GTK_CONTAINER(window), fix);
-
-    GdkGLConfig *glconfig = gdk_gl_config_new_by_mode(static_cast<GdkGLConfigMode>(GDK_GL_MODE_RGB | GDK_GL_MODE_DEPTH | GDK_GL_MODE_DOUBLE));
-
-    GtkWidget *viewport = gtk_drawing_area_new();
-    gtk_widget_set_gl_capability (viewport, glconfig, NULL, TRUE, GDK_GL_RGBA_TYPE);
-    gtk_widget_set_size_request(viewport, v.getWidth(), v.getHeight());
-    gtk_fixed_put(GTK_FIXED(fix), viewport, 0, 0);
-
-    gtk_widget_show_all(window);
-    // Make window click through
-    gdk_window_input_shape_combine_region(window->window, gdk_region_new(), 0, 0);
-
-    pthread_t thread;
-    pthread_create(&thread,NULL,Thread,NULL);
 
 
-    _irr_params.WindowId = reinterpret_cast<void*> (GDK_WINDOW_XWINDOW(viewport->window));
+    _irr_params.WindowId = reinterpret_cast<void*> (w);
+    //_irr_params.WindowId = reinterpret_cast<void*> (DefaultRootWindow(display));
 }
 
 int init_irrlicht()
 {
     // prepare basic configuration for irrlicht
     //_irr_params.AntiAlias = 8;
-    _irr_params.Bits = 16;
-    //_irr_params.DeviceType = irr::EIDT_X11;
+    //_irr_params.Bits = 32;
+    _irr_params.DeviceType = irr::EIDT_X11;
     _irr_params.DriverType = irr::video::EDT_OPENGL;
     //_irr_params.Doublebuffer = true;
     _irr_params.EventReceiver = nullptr;
@@ -157,7 +118,7 @@ int init_irrlicht()
         return 1;
     }
 
-    wp::irrlicht::device->setWindowCaption (L"Test game");
+    //wp::irrlicht::device->setWindowCaption (L"Test game");
     wp::irrlicht::driver = wp::irrlicht::device->getVideoDriver();
 
     // check for ps and vs support
@@ -242,8 +203,83 @@ static Window __ToonGetNautilusDesktop(Display *display, int screen, Window wind
     return winreturn;
 }
 
-int main (int argc, char* argv[])
+typedef struct Hints
 {
+    unsigned long   flags;
+    unsigned long   functions;
+    unsigned long   decorations;
+    long            inputMode;
+    unsigned long   status;
+} Hints;
+
+int ready = 0;
+
+void *Thread(void* arg) {
+    Display *d;
+    XEvent e;
+    const char *msg = "Hello, World!";
+    int s;
+
+    d = XOpenDisplay(NULL);
+    if (d == NULL) {
+        fprintf(stderr, "Cannot open display\n");
+        exit(1);
+    }
+
+    XVisualInfo vinfo;
+
+    if (!XMatchVisualInfo(d, XDefaultScreen(d), 32, TrueColor, &vinfo))
+    {
+        fprintf(stderr, "no such visual\n");
+    }
+
+    Window parent = XDefaultRootWindow(d);
+
+    XSync(d, True);
+
+    Visual *visual = vinfo.visual;
+    int depth = vinfo.depth;
+
+    XSetWindowAttributes attrs;
+    attrs.colormap = XCreateColormap(d, XDefaultRootWindow(d), visual, AllocNone);
+    attrs.background_pixel = 0;
+    attrs.border_pixel = 0;
+
+    s = DefaultScreen(d);
+    w = XCreateWindow(d, parent, 10, 10, 150, 100, 0, depth, InputOutput, visual, CWBackPixel | CWColormap | CWBorderPixel, &attrs);
+
+    XSync(d, True);
+
+    XSelectInput(d, w, ExposureMask | KeyPressMask);
+
+    Hints hints;
+    Atom property;
+    hints.flags = 2;
+    hints.decorations = 0;
+    property = XInternAtom(d, "_MOTIF_WM_HINTS", true);
+    XChangeProperty(d,w,property,property,32,PropModeReplace,(unsigned char *)&hints,5);
+
+
+    XMapWindow(d, w);
+    XMapRaised(d, RootWindow(d, s));
+    //XLowerWindow(d, w);
+
+    ready = 1;
+
+    while (1) {
+        XNextEvent(d, &e);
+        if (e.type == Expose) {
+            XFillRectangle(d, w, DefaultGC(d, s), 20, 20, 10, 10);
+            XDrawString(d, w, DefaultGC(d, s), 10, 50, msg, strlen(msg));
+        }
+        if (e.type == KeyPress)
+            break;
+    }
+
+    XCloseDisplay(d);
+}
+
+int main (int argc, char* argv[]) {
     int mode = 0;
     int max_fps = 30;
     bool audio_support = true;
@@ -302,8 +338,12 @@ int main (int argc, char* argv[])
         }
     }
 
-    gtk_init(&argc, &argv);
-    gtk_gl_init(&argc, &argv);
+    pthread_t tidMov;
+    int rc = pthread_create(&tidMov,NULL,Thread,NULL);
+
+    while (!ready){
+
+    }
 
     if (init_irrlicht())
     {

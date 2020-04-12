@@ -112,6 +112,10 @@ irr::io::E_FILE_ARCHIVE_TYPE CPkgReader::getType() const
 	return irr::io::E_FILE_ARCHIVE_TYPE::EFAT_ZIP;
 }
 
+const irr::io::path& CPkgReader::getArchiveName() const {
+    return this->mFile->getFileName();
+}
+
 const irr::io::IFileList* CPkgReader::getFileList() const
 {
 	return this;

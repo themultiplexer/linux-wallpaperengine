@@ -69,6 +69,8 @@ public:
     //! get the archive type
     virtual irr::io::E_FILE_ARCHIVE_TYPE getType () const;
 
+    virtual const irr::io::path& getArchiveName() const;
+
 protected:
     void scanPkgHeader ();
 

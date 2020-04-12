@@ -101,7 +101,7 @@ namespace wp
                 ->addHighLevelShaderMaterial (
                     this->m_vertShader->precompile ().c_str (), "main", irr::video::EVST_VS_2_0,
                     this->m_fragShader->precompile ().c_str (), "main", irr::video::EPST_PS_2_0,
-                    this, irr::video::EMT_TRANSPARENT_ALPHA_CHANNEL, 0, irr::video::EGSL_DEFAULT
+                    this, irr::video::EMT_TRANSPARENT_ALPHA_CHANNEL, 0
                 );
         }
 
