@@ -4,6 +4,9 @@ project(wallengine)
 set(CMAKE_CXX_STANDARD 11)
 set(SDL_INCLUDE_DIRS /usr/include/SDL)
 
+set(IRRLICHT_LIBRARY /usr/local/lib/libIrrlicht.so.1.9.0)
+set(IRRLICHT_INCLUDE_DIR /usr/local/include/irrlicht/)
+
 # Use the package PkgConfig to detect GTK+ headers/library files
 FIND_PACKAGE(PkgConfig REQUIRED)
 
